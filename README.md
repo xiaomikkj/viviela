@@ -1,3 +1,10 @@
+> [!IMPORTANT]
+> **This is the `viviela` fork.** It integrates Hermes-agent-style memory lifecycle
+> (`MemoryManager`), per-turn context (`TurnContext`), and a background `Curator`
+> into PicoClaw. See [`VIVIELA.md`](./VIVIELA.md) for the full design notes, file
+> inventory, and roadmap. Upstream behavior for sessions, MCP, routing, subturns,
+> and channels is unchanged.
+
 <div align="center">
 <img src="assets/logo.webp" alt="PicoClaw" width="512">
 
