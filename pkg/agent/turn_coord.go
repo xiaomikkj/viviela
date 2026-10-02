@@ -70,7 +70,9 @@ func (al *AgentLoop) runTurn(ctx context.Context, ts *turnState, pipeline *Pipel
 		if turnStatus == TurnEndStatusCompleted {
 			if mm := ts.agent.MemoryManager; mm != nil {
 				mm.SyncTurn(ts.userMessage, ts.finalContentSnapshot())
-				mm.QueuePrefetch(mm.BuildMemoryContextBlock())
+				// Async prefetch the updated memory context for the next turn.
+				// This reads the just-synced memory so next turn has fresh context.
+				mm.QueuePrefetch()
 			}
 		}
 	}()

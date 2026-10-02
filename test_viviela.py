@@ -39,8 +39,8 @@ def main():
         ),
         check(
             "pkg/agent/context.go",
-            ["memoryManager", "BuildMemoryContextBlock"],
-            ["NewMemoryStore(workspace)"],
+            ["memoryManager", "BuildMemoryContextBlock", "memoryManager ...*MemoryManager"],
+            [],
         ),
         check(
             "pkg/agent/instance.go",

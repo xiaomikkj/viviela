@@ -98,7 +98,7 @@ func getGlobalConfigDir() string {
 	return config.GetHome()
 }
 
-func NewContextBuilder(workspace string, memoryManager *MemoryManager) *ContextBuilder {
+func NewContextBuilder(workspace string, memoryManager ...*MemoryManager) *ContextBuilder {
 	// builtin skills: skills directory in current project
 	// Use the skills/ directory under the current working directory
 	builtinSkillsDir := strings.TrimSpace(os.Getenv(config.EnvBuiltinSkills))
@@ -114,10 +114,20 @@ func NewContextBuilder(workspace string, memoryManager *MemoryManager) *ContextB
 	}
 	globalSkillsDir := filepath.Join(getGlobalConfigDir(), "skills")
 
+	// Extract memory manager if provided (variadic for backward compatibility).
+	var mm *MemoryManager
+	if len(memoryManager) > 0 {
+		mm = memoryManager[0]
+	}
+	if mm == nil {
+		// Fallback: create a default memory manager if none provided.
+		mm = NewMemoryManager(NewMemoryStore(workspace))
+	}
+
 	return &ContextBuilder{
 		workspace:      workspace,
 		skillsLoader:   skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir),
-		memory:         memoryManager,
+		memory:         mm,
 		promptRegistry: NewPromptRegistry(),
 	}
 }

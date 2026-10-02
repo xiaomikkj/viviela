@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/logger"
@@ -19,8 +20,10 @@ type Curator struct {
 	workspace string
 	interval  time.Duration
 	stop      chan struct{}
-	once      sync.Once
-	wg        sync.WaitGroup
+	stopped   chan struct{}
+	startOnce sync.Once
+	stopOnce  sync.Once
+	running   atomic.Bool
 }
 
 // NewCurator creates a new Curator.
@@ -32,36 +35,34 @@ func NewCurator(workspace string, interval time.Duration) *Curator {
 		workspace: workspace,
 		interval:  interval,
 		stop:      make(chan struct{}),
+		stopped:   make(chan struct{}),
 	}
 }
 
-// Start begins the background curation loop.
+// Start begins the background curation loop. Safe to call multiple times.
 func (c *Curator) Start() {
 	if c == nil {
 		return
 	}
-	c.once.Do(func() {
-		c.wg.Add(1)
+	c.startOnce.Do(func() {
+		c.running.Store(true)
 		go c.run()
 	})
 }
 
-// Stop gracefully stops the background curation loop.
+// Stop gracefully stops the background curation loop. Safe to call multiple times.
 func (c *Curator) Stop() {
 	if c == nil {
 		return
 	}
-	select {
-	case <-c.stop:
-		return
-	default:
+	c.stopOnce.Do(func() {
 		close(c.stop)
-	}
-	c.wg.Wait()
+		<-c.stopped
+	})
 }
 
 func (c *Curator) run() {
-	defer c.wg.Done()
+	defer close(c.stopped)
 
 	ticker := time.NewTicker(c.interval)
 	defer ticker.Stop()
@@ -86,26 +87,46 @@ func (c *Curator) run() {
 }
 
 func (c *Curator) tick() {
+	if !c.running.Load() {
+		return
+	}
 	c.refreshSkillTreeMtime()
 	c.refreshMemoryMtime()
 }
 
 func (c *Curator) refreshSkillTreeMtime() {
 	roots := c.skillRoots()
-	if len(roots) == 0 {
-		return
-	}
 	for _, root := range roots {
-		_ = touchMtime(root)
+		c.touchDir(root)
 	}
 }
 
 func (c *Curator) refreshMemoryMtime() {
 	memoryDir := filepath.Join(c.workspace, "memory")
-	if _, err := os.Stat(memoryDir); err != nil {
-		return
+	if _, err := os.Stat(memoryDir); err == nil {
+		c.touchDir(memoryDir)
 	}
-	_ = touchMtime(memoryDir)
+}
+
+// touchDir touches only the directory itself and a .curator marker file.
+// It does not recurse into subdirectories to avoid O(n) file operations.
+func (c *Curator) touchDir(dir string) {
+	now := time.Now()
+	if err := os.Chtimes(dir, now, now); err != nil {
+		logger.DebugCF("agent", "curator touch dir failed", map[string]any{
+			"path":  dir,
+			"error": err.Error(),
+		})
+	}
+
+	// Also touch a marker file so file watchers can detect changes.
+	marker := filepath.Join(dir, ".curator")
+	if err := os.WriteFile(marker, []byte(now.Format(time.RFC3339)), 0o644); err != nil {
+		logger.DebugCF("agent", "curator write marker failed", map[string]any{
+			"path":  marker,
+			"error": err.Error(),
+		})
+	}
 }
 
 func (c *Curator) skillRoots() []string {
@@ -136,30 +157,4 @@ func (c *Curator) skillRoots() []string {
 	}
 
 	return roots
-}
-
-func touchMtime(path string) error {
-	now := time.Now()
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-
-	if !info.IsDir() {
-		return os.Chtimes(path, now, now)
-	}
-
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if err := touchMtime(filepath.Join(path, entry.Name())); err != nil {
-			logger.WarnCF("agent", "curator touch failed", map[string]any{
-				"path":  filepath.Join(path, entry.Name()),
-				"error": err.Error(),
-			})
-		}
-	}
-	return nil
 }

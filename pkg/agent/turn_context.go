@@ -92,13 +92,14 @@ func (tc *TurnContext) Cancel() {
 }
 
 // ToContext converts this TurnContext to a Go context.Context.
+// Note: This creates a minimal turnState with only the turn ID set.
+// For full turn state, use newTurnState and withTurnState directly.
 func (tc *TurnContext) ToContext(ctx context.Context) context.Context {
 	if tc == nil {
 		return ctx
 	}
-	ctx = WithTurnState(ctx, &turnState{
+	ts := &turnState{
 		turnID: tc.TurnID,
-	})
-	ctx = WithAgentLoop(ctx, nil) // AgentLoop will be set by caller if needed
-	return ctx
+	}
+	return withTurnState(ctx, ts)
 }
